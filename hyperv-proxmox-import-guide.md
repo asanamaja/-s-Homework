@@ -68,6 +68,28 @@ $Parent.FullName
 
 출력이 비어 있으면 여기서 멈추고, 압축 해제한 VM에 체크포인트 파일이 실제로 있는지 다시 확인해야 합니다.
 
+### 압축 해제로 날짜가 바뀐 경우 수동 지정
+
+zip을 풀면서 모든 파일의 수정 시간이 압축 해제 시점으로 바뀌면, 위의 "최신 파일" 자동 선택이 틀릴 수 있습니다. 이 경우 파일 탐색기에서 실제로 사용할 `.avhdx` 경로를 확인한 뒤 직접 `$Parent`에 넣습니다.
+
+예시:
+
+```powershell
+$ParentPath = "C:\Users\사용자이름\Desktop\a\Snapshots\실제사용할파일.avhdx"
+$Parent = Get-Item $ParentPath
+$Parent.FullName
+```
+
+바탕화면 경로를 자동으로 조합하려면 아래처럼 쓸 수도 있습니다.
+
+```powershell
+$ParentPath = Join-Path $Original "Snapshots\실제사용할파일.avhdx"
+$Parent = Get-Item $ParentPath
+$Parent.FullName
+```
+
+이후 단계의 `New-VHD -ParentPath $Parent.FullName` 명령은 그대로 사용합니다.
+
 ## 4. 새 변경 디스크 만들기
 
 작업용 폴더를 만듭니다.
