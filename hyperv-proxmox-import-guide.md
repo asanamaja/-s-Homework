@@ -522,6 +522,50 @@ ls -l /dev/kvm
 
 `egrep` 결과가 `1` 이상이고 `/dev/kvm`이 보이면 KVM을 사용할 수 있습니다.
 
+### `Host doesn't support requested feature ... aes` 오류
+
+Proxmox 내부 VM을 시작할 때 아래처럼 나오면 KVM 자체가 없는 문제가 아니라, 해당 VM의 CPU 타입이 현재 Hyper-V 중첩 환경에서 보이지 않는 CPU 기능을 요구하는 문제입니다.
+
+```text
+kvm: warning: host doesn't support requested feature: CPUID[...].ECX.aes
+kvm: Host doesn't support requested features
+start failed: QEMU exited with code 1
+```
+
+예를 들어 VM 설정에 아래처럼 되어 있을 수 있습니다.
+
+```text
+cpu: x86-64-v2-AES
+```
+
+이 경우 AES 요구가 없는 CPU 타입으로 낮춘 뒤 다시 시작합니다. 예를 들어 VM ID가 `120`이면:
+
+```bash
+qm set 120 --cpu x86-64-v2
+qm start 120
+```
+
+그래도 실패하면 더 보수적인 CPU 타입으로 바꿉니다.
+
+```bash
+qm set 120 --cpu kvm64
+qm start 120
+```
+
+GUI에서는:
+
+```text
+VM 120 -> Hardware -> Processors -> Type
+```
+
+에서 `x86-64-v2-AES` 대신 `x86-64-v2` 또는 `kvm64`로 변경합니다.
+
+같은 문제가 있는 VM을 찾으려면:
+
+```bash
+grep -R "^cpu: .*AES" /etc/pve/qemu-server/*.conf
+```
+
 그래도 안 되면 실제 PC BIOS/UEFI에서 아래 설정이 켜져 있는지 확인합니다.
 
 - Intel: Intel VT-x
