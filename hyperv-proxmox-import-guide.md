@@ -117,7 +117,7 @@ New-VHD -Path $RunDisk -ParentPath $Parent.FullName -Differencing
 
 ## 5. 이전 실패 VM 등록 제거
 
-Hyper-V에 실패한 `Proxmox-VE` VM이 이미 있으면, VM 등록만 제거합니다.
+Hyper-V에 실패한 `Proxmox-VE` VM이 이미 있으면, 먼저 VM 등록만 제거합니다. 이 단계는 **파일 삭제가 아니라 Hyper-V 목록에서 실패한 VM만 지우는 작업**입니다.
 
 ```powershell
 Stop-VM -Name "Proxmox-VE" -TurnOff -Force -ErrorAction SilentlyContinue
@@ -125,11 +125,26 @@ Remove-VMSavedState -VMName "Proxmox-VE" -ErrorAction SilentlyContinue
 Remove-VM -Name "Proxmox-VE" -Force -ErrorAction SilentlyContinue
 ```
 
+중간에 "없음", "이미 꺼져 있음", "저장된 상태가 없음" 같은 경고가 나오면 무시해도 됩니다.
+
 이 명령은 압축 해제한 `바탕화면\a` 폴더를 삭제하지 않습니다.
+
+Hyper-V 관리자에서 직접 할 수도 있습니다.
+
+1. Hyper-V 관리자 열기
+2. VM 목록에 `Proxmox-VE`가 있으면 우클릭
+3. 삭제
+4. `바탕화면\a` 폴더는 지우지 않기
 
 ## 6. `run.vhdx`로 새 Hyper-V VM 만들기
 
-PowerShell에서 새 VM을 만듭니다.
+이제 새 VM을 만듭니다. 이때 원본 `.avhdx`나 `.vhdx`를 붙이는 것이 아니라, 반드시 아래 파일을 붙입니다.
+
+```text
+바탕화면\a\proxmox-work\run.vhdx
+```
+
+32GB RAM이 있는 PC에서는 처음 부팅/복구 확인용으로 **8GB**를 추천합니다.
 
 ```powershell
 New-VM `
@@ -139,7 +154,17 @@ New-VM `
   -VHDPath $RunDisk
 ```
 
-호스트 메모리가 부족하면 `8GB` 대신 `4GB`처럼 낮춰도 됩니다.
+메모리 기준:
+
+- 처음 부팅/복구 확인: `8GB` 추천
+- Proxmox 안에서 VM/LXC를 여러 개 돌릴 예정: 이후 `12GB` ~ `16GB`로 조정
+- 호스트 Windows 안정성을 위해 처음부터 `24GB` 이상 할당은 비추천
+
+나중에 메모리를 16GB로 바꾸려면 VM을 끈 뒤 실행합니다.
+
+```powershell
+Set-VMMemory -VMName "Proxmox-VE" -StartupBytes 16GB
+```
 
 ## 7. 첫 부팅 전 검사점과 보안 부팅 끄기
 
@@ -158,7 +183,30 @@ Hyper-V 관리자에서도 확인합니다.
 - 설정 -> 보안: 보안 부팅 사용 안 함
 - 설정 -> 펌웨어: 하드 디스크가 네트워크 부팅보다 위에 있음
 
-## 8. 네트워크 없이 먼저 부팅
+## 8. 연결된 디스크가 `run.vhdx`인지 확인
+
+시작하기 전에 반드시 VM이 실제로 `run.vhdx`를 물고 있는지 확인합니다.
+
+```powershell
+Get-VMHardDiskDrive -VMName "Proxmox-VE" | Select-Object Path
+```
+
+정상 결과는 아래처럼 끝나야 합니다.
+
+```text
+...\Desktop\a\proxmox-work\run.vhdx
+```
+
+아래처럼 원본 파일을 직접 물고 있으면 잘못된 상태입니다. 이 경우 VM을 시작하지 마세요.
+
+```text
+...\Desktop\a\Snapshots\어떤파일.avhdx
+...\Desktop\a\Virtual Hard Disks\어떤파일.vhdx
+```
+
+잘못 연결되어 있으면 VM을 삭제한 뒤 6번부터 다시 진행합니다.
+
+## 9. 네트워크 없이 먼저 부팅
 
 먼저 네트워크를 붙이지 않은 상태로 VM을 시작합니다.
 
@@ -172,7 +220,7 @@ Start-VM -Name "Proxmox-VE"
 바탕화면\a\proxmox-work\run.vhdx
 ```
 
-## 9. 부팅 안정 후 네트워크 연결
+## 10. 부팅 안정 후 네트워크 연결
 
 NAT 방식이면 Default Switch를 붙입니다.
 
@@ -188,7 +236,7 @@ Connect-VMNetworkAdapter -VMName "Proxmox-VE" -SwitchName "External Switch"
 
 `External Switch` 부분은 실제 만든 스위치 이름으로 바꿉니다.
 
-## 10. 이번 시도 변경분만 초기화하기
+## 11. 이번 시도 변경분만 초기화하기
 
 이번 부팅 시도를 버리고 처음 상태로 되돌리고 싶으면, VM을 끄고 `run.vhdx`만 다시 만듭니다.
 
@@ -208,7 +256,7 @@ New-VHD -Path $RunDisk -ParentPath $Parent.FullName -Differencing
 - 새 변경분은 `바탕화면\a\proxmox-work\run.vhdx`에 저장합니다.
 - C드라이브 여유 공간이 부족하면 부팅 전에 먼저 공간을 확보해야 합니다.
 
-## 11. 사용한 PowerShell 변수 정리
+## 12. 사용한 PowerShell 변수 정리
 
 작업이 끝난 뒤 현재 PowerShell 창에서 사용한 변수를 지우고 싶으면 아래를 실행합니다.
 
