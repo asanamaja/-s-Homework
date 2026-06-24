@@ -174,6 +174,72 @@ Remove-Item $RunDisk -Force -ErrorAction SilentlyContinue
 New-VHD -Path $RunDisk -ParentPath $ParentLink -Differencing
 ```
 
+### `Test-Path`가 `True`인데도 같은 오류가 나는 경우
+
+`Test-Path $Info.ParentPath`가 `True`여도, 바로 위 부모만 존재한다는 뜻입니다. 그 부모의 부모, 그 위의 부모 중 하나가 끊겨 있으면 `New-VHD`에서 같은 `0xC03A000D` 오류가 날 수 있습니다.
+
+먼저 Hyper-V가 전체 체인을 정상으로 보는지 확인합니다.
+
+```powershell
+Test-VHD -Path $Parent.FullName
+Test-VHD -Path $ParentLink
+```
+
+하나라도 `False`이면 전체 체인 중 어딘가가 끊긴 것입니다.
+
+아래 명령으로 부모 체인을 끝까지 따라가면서 깨진 지점을 찾습니다.
+
+```powershell
+$Current = $Parent.FullName
+
+while ($Current) {
+    Write-Host "`nCHECK:" $Current
+    $Vhd = Get-VHD -Path $Current
+    $Vhd | Format-List Path, ParentPath, VhdType
+
+    if ([string]::IsNullOrWhiteSpace($Vhd.ParentPath)) {
+        Write-Host "END: base disk reached"
+        break
+    }
+
+    if (-not (Test-Path $Vhd.ParentPath)) {
+        Write-Host "BROKEN PARENT:" $Vhd.ParentPath
+        $MissingName = Split-Path $Vhd.ParentPath -Leaf
+        Get-ChildItem $Original -Recurse -File |
+        Where-Object { $_.Name -eq $MissingName } |
+        Select-Object LastWriteTime, @{Name="GB";Expression={[math]::Round($_.Length / 1GB, 2)}}, FullName
+        break
+    }
+
+    $Current = $Vhd.ParentPath
+}
+```
+
+`BROKEN PARENT`가 나오면, 출력된 파일 이름과 같은 파일을 `a` 폴더 안에서 찾아 현재 `$Current` 디스크의 부모로 다시 지정합니다.
+
+```powershell
+$ActualParent = Get-ChildItem $Original -Recurse -File |
+Where-Object { $_.Name -eq $MissingName } |
+Select-Object -First 1
+
+Set-VHD -Path $Current -ParentPath $ActualParent.FullName
+```
+
+다시 전체 체인을 검사합니다.
+
+```powershell
+Test-VHD -Path $Parent.FullName
+```
+
+`True`가 나올 때까지 같은 과정을 반복합니다. 그 다음 `run.vhdx`를 다시 만듭니다.
+
+```powershell
+Remove-Item $RunDisk -Force -ErrorAction SilentlyContinue
+New-VHD -Path $RunDisk -ParentPath $ParentLink -Differencing
+```
+
+만약 `Test-VHD -Path $Parent.FullName`은 `True`인데 `Test-VHD -Path $ParentLink`만 `False`이면, 이 PC의 Hyper-V가 `.avhdx` 하드링크 우회를 받아들이지 않는 상황일 수 있습니다. 이 경우 안전한 대안은 공간을 확보한 뒤 `Convert-VHD`로 체인을 단일 `.vhdx`로 병합하거나, 원본 제공자에게 Hyper-V 내보내기본을 다시 받는 것입니다.
+
 이후 구조는 아래처럼 전부 `a` 폴더 안에서 처리됩니다.
 
 ```text
