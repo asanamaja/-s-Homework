@@ -115,6 +115,65 @@ New-Item -ItemType HardLink -Path $ParentLink -Target $Parent.FullName
 New-VHD -Path $RunDisk -ParentPath $ParentLink -Differencing
 ```
 
+### `가상 하드 디스크의 체인이 끊어졌습니다` 오류가 나는 경우
+
+아래 오류가 나오면 선택한 `.avhdx`가 자기 부모 디스크를 못 찾는 상태입니다.
+
+```text
+가상 하드 디스크의 체인이 끊어졌습니다.
+차이점 보관용 디스크의 부모 가상 하드 디스크를 찾을 수 없습니다. (0xC03A000D)
+```
+
+먼저 선택한 `.avhdx`가 어떤 부모를 찾고 있는지 확인합니다.
+
+```powershell
+$Info = Get-VHD -Path $Parent.FullName
+$Info | Format-List Path, ParentPath, VhdType
+Test-Path $Info.ParentPath
+```
+
+`Test-Path` 결과가 `False`이면 부모 경로가 옛날 PC 경로이거나 현재 위치와 맞지 않는 것입니다.
+
+부모 파일 이름을 뽑아서 `a` 폴더 안에서 같은 이름의 파일을 찾습니다.
+
+```powershell
+$MissingParentName = Split-Path $Info.ParentPath -Leaf
+Get-ChildItem $Original -Recurse -File |
+Where-Object { $_.Name -eq $MissingParentName } |
+Select-Object LastWriteTime, @{Name="GB";Expression={[math]::Round($_.Length / 1GB, 2)}}, FullName
+```
+
+나온 결과가 하나라면 그 경로를 실제 부모로 지정합니다.
+
+```powershell
+$ActualParent = Get-ChildItem $Original -Recurse -File |
+Where-Object { $_.Name -eq $MissingParentName } |
+Select-Object -First 1
+
+Set-VHD -Path $Parent.FullName -ParentPath $ActualParent.FullName
+```
+
+그 다음 다시 확인합니다.
+
+```powershell
+Get-VHD -Path $Parent.FullName | Format-List Path, ParentPath, VhdType
+```
+
+만약 `Set-VHD`에서 ID 불일치 오류가 나면, 정말 같은 체크포인트 체인의 부모 파일이 맞는지 확인한 뒤에만 아래 옵션을 사용합니다.
+
+```powershell
+Set-VHD -Path $Parent.FullName -ParentPath $ActualParent.FullName -IgnoreIdMismatch
+```
+
+부모도 또 다른 부모를 못 찾을 수 있습니다. 그 경우 현재 부모 파일에 대해 같은 과정을 반복해서, 최종 `.vhdx`까지 체인이 이어지게 해야 합니다.
+
+체인 경로를 고친 뒤 다시 `run.vhdx`를 만듭니다.
+
+```powershell
+Remove-Item $RunDisk -Force -ErrorAction SilentlyContinue
+New-VHD -Path $RunDisk -ParentPath $ParentLink -Differencing
+```
+
 이후 구조는 아래처럼 전부 `a` 폴더 안에서 처리됩니다.
 
 ```text
