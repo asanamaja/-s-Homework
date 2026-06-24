@@ -207,3 +207,13 @@ New-VHD -Path $RunDisk -ParentPath $Parent.FullName -Differencing
 - 원본 `바탕화면\a\Snapshots`, `바탕화면\a\Virtual Hard Disks`, `바탕화면\a\Virtual Machines`는 체크포인트 원본 체인으로 보존합니다.
 - 새 변경분은 `바탕화면\a\proxmox-work\run.vhdx`에 저장합니다.
 - C드라이브 여유 공간이 부족하면 부팅 전에 먼저 공간을 확보해야 합니다.
+
+## 11. 사용한 PowerShell 변수 정리
+
+작업이 끝난 뒤 현재 PowerShell 창에서 사용한 변수를 지우고 싶으면 아래를 실행합니다.
+
+```powershell
+Remove-Variable Original, Work, RunDisk, Parent, ParentPath -ErrorAction SilentlyContinue
+```
+
+이 명령은 PowerShell 변수만 지우며, VM 파일이나 디스크 파일은 삭제하지 않습니다.
