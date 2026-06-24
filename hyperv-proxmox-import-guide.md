@@ -15,14 +15,14 @@ a
 └─ Virtual Machines
 ```
 
-목표는 **압축 해제한 원본 `.vhdx` / `.avhdx` 체크포인트 체인은 건드리지 않고**, 새 `run.vhdx` 파일에만 변경분이 쌓이게 해서 용량이 갑자기 원본 쪽에 늘어나는 상황을 줄이는 것입니다.
+목표는 **압축 해제한 원본 `.vhdx` / `.avhdx` 체크포인트 체인은 건드리지 않고**, `a` 폴더 안에 새 작업 폴더를 만들어 `run.vhdx` 파일에만 변경분이 쌓이게 하는 것입니다.
 
 ## 주의사항
 
 - `바탕화면\a` 안의 `.vhdx`, `.avhdx` 파일을 개별 삭제하지 마세요.
 - 원본 `.avhdx`를 VM에 직접 붙여서 부팅하지 마세요.
 - 이 복구용 VM에서는 Hyper-V 검사점을 켜지 마세요.
-- `run.vhdx`는 VM을 켜면 커질 수 있습니다. 다만 원본 `a` 폴더 쪽이 크게 변하지 않도록 하는 방식입니다.
+- `run.vhdx`는 VM을 켜면 커질 수 있습니다. 다만 원본 체크포인트 체인 파일이 아니라 `a\proxmox-work\run.vhdx`만 커지게 하는 방식입니다.
 
 ## 1. 관리자 PowerShell 열기
 
@@ -34,7 +34,7 @@ a
 
 ```powershell
 $Original = Join-Path ([Environment]::GetFolderPath("Desktop")) "a"
-$Work = Join-Path ([Environment]::GetFolderPath("Desktop")) "proxmox-work"
+$Work = Join-Path $Original "proxmox-work"
 $RunDisk = Join-Path $Work "run.vhdx"
 
 $Original
@@ -82,11 +82,13 @@ New-Item -ItemType Directory -Path $Work -Force
 New-VHD -Path $RunDisk -ParentPath $Parent.FullName -Differencing
 ```
 
-이후 구조는 아래처럼 됩니다.
+이후 구조는 아래처럼 전부 `a` 폴더 안에서 처리됩니다.
 
 ```text
-바탕화면\a\...원본 .vhdx/.avhdx 체인 = 보존
-바탕화면\proxmox-work\run.vhdx   = 새 변경분 저장
+바탕화면\a\Snapshots              = 원본 체크포인트 보존
+바탕화면\a\Virtual Hard Disks     = 원본 디스크 보존
+바탕화면\a\Virtual Machines       = 원본 구성 파일 보존
+바탕화면\a\proxmox-work\run.vhdx  = 새 변경분 저장
 ```
 
 문제가 생기면 VM을 끄고 `run.vhdx`만 지운 뒤 다시 만들면 됩니다.
@@ -142,10 +144,10 @@ Hyper-V 관리자에서도 확인합니다.
 Start-VM -Name "Proxmox-VE"
 ```
 
-부팅되면 원본 `바탕화면\a` 안의 파일이 빠르게 커지지 않는지 확인합니다. 정상적으로는 주로 아래 파일이 커집니다.
+부팅되면 원본 체크포인트/디스크 파일이 빠르게 커지지 않는지 확인합니다. 정상적으로는 주로 아래 파일이 커집니다.
 
 ```text
-바탕화면\proxmox-work\run.vhdx
+바탕화면\a\proxmox-work\run.vhdx
 ```
 
 ## 9. 부팅 안정 후 네트워크 연결
@@ -180,5 +182,6 @@ New-VHD -Path $RunDisk -ParentPath $Parent.FullName -Differencing
 ## 예상 동작
 
 - VM을 켜면 `run.vhdx`는 커질 수 있습니다.
-- 원본 `바탕화면\a` 폴더는 체크포인트 원본 체인으로 보존합니다.
+- 원본 `바탕화면\a\Snapshots`, `바탕화면\a\Virtual Hard Disks`, `바탕화면\a\Virtual Machines`는 체크포인트 원본 체인으로 보존합니다.
+- 새 변경분은 `바탕화면\a\proxmox-work\run.vhdx`에 저장합니다.
 - C드라이브 여유 공간이 부족하면 부팅 전에 먼저 공간을 확보해야 합니다.
