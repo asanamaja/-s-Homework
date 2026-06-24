@@ -486,7 +486,79 @@ iface vmbr0 inet static
 https://192.168.0.50:8006
 ```
 
-## 12. 이번 시도 변경분만 초기화하기
+## 12. Proxmox 내부 VM에서 KVM 오류가 나는 경우
+
+Proxmox 안의 VM을 시작할 때 아래 오류가 나오면, Hyper-V VM에 nested virtualization이 켜져 있지 않은 상태일 가능성이 큽니다.
+
+```text
+TASK ERROR: KVM virtualisation configured, but not available.
+Either disable in VM configuration or enable in BIOS.
+```
+
+Hyper-V 안에서 Proxmox를 돌리고, 그 Proxmox 안에서 다시 VM을 돌리는 구조이므로 Windows Hyper-V VM에 CPU 가상화 확장을 노출해야 합니다.
+
+Windows 관리자 PowerShell에서 `Proxmox-VE` VM을 끈 뒤 실행합니다.
+
+```powershell
+Stop-VM -Name "Proxmox-VE" -TurnOff -Force
+Set-VMProcessor -VMName "Proxmox-VE" -ExposeVirtualizationExtensions $true
+Set-VMMemory -VMName "Proxmox-VE" -DynamicMemoryEnabled $false
+Set-VMNetworkAdapter -VMName "Proxmox-VE" -MacAddressSpoofing On
+Start-VM -Name "Proxmox-VE"
+```
+
+각 설정의 의미:
+
+- `ExposeVirtualizationExtensions`: Proxmox 안에서 KVM/VT-x/AMD-V가 보이게 함
+- `DynamicMemoryEnabled $false`: nested virtualization 안정성을 위해 동적 메모리 끔
+- `MacAddressSpoofing On`: Proxmox 안 VM/LXC가 브리지 네트워크를 쓸 수 있게 함
+
+Proxmox 콘솔에서 KVM이 보이는지 확인합니다.
+
+```bash
+egrep -c '(vmx|svm)' /proc/cpuinfo
+ls -l /dev/kvm
+```
+
+`egrep` 결과가 `1` 이상이고 `/dev/kvm`이 보이면 KVM을 사용할 수 있습니다.
+
+그래도 안 되면 실제 PC BIOS/UEFI에서 아래 설정이 켜져 있는지 확인합니다.
+
+- Intel: Intel VT-x
+- AMD: SVM Mode 또는 AMD-V
+- 가능하면 VT-d/IOMMU
+
+### 특정 VM만 임시로 켜야 하는 경우
+
+KVM을 끄면 느리지만 해당 VM이 켜질 수 있습니다. 예를 들어 VM ID가 `110`이면 Proxmox 콘솔에서:
+
+```bash
+qm set 110 --kvm 0
+qm start 110
+```
+
+GUI에서는:
+
+```text
+VM 110 -> Options -> KVM hardware virtualization -> No
+```
+
+### `VM 110 not running (500)` 메시지
+
+아래 메시지는 VM 110이 실제로 실행 중이 아닌 상태에서 콘솔 열기, 정지, 재시작 같은 작업을 했을 때 나올 수 있습니다.
+
+```text
+VM 110 not running (500)
+```
+
+KVM 오류 때문에 시작에 실패한 뒤 이 메시지가 이어서 나오는 경우가 많습니다. 먼저 nested virtualization을 켠 뒤 VM 110을 다시 시작합니다.
+
+```bash
+qm status 110
+qm start 110
+```
+
+## 13. 이번 시도 변경분만 초기화하기
 
 이번 부팅 시도를 버리고 처음 상태로 되돌리고 싶으면, VM을 끄고 `run.vhdx`만 다시 만듭니다.
 
@@ -506,7 +578,7 @@ New-VHD -Path $RunDisk -ParentPath $ParentLink -Differencing
 - 새 변경분은 `바탕화면\a\proxmox-work\run.vhdx`에 저장합니다.
 - C드라이브 여유 공간이 부족하면 부팅 전에 먼저 공간을 확보해야 합니다.
 
-## 13. 사용한 PowerShell 변수 정리
+## 14. 사용한 PowerShell 변수 정리
 
 작업이 끝난 뒤 현재 PowerShell 창에서 사용한 변수를 지우고 싶으면 아래를 실행합니다.
 
