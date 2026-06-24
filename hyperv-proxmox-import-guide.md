@@ -36,12 +36,10 @@ a
 $Original = Join-Path ([Environment]::GetFolderPath("Desktop")) "a"
 $Work = Join-Path $Original "proxmox-work"
 $RunDisk = Join-Path $Work "run.vhdx"
-$ParentLink = Join-Path $Work "parent-link.vhdx"
 
 $Original
 $Work
 $RunDisk
-$ParentLink
 ```
 
 출력된 `$Original` 경로가 `Snapshots`, `Virtual Hard Disks`, `Virtual Machines`가 들어있는 `a` 폴더인지 확인합니다.
@@ -68,6 +66,13 @@ Select-Object -First 1
 $Parent.FullName
 ```
 
+원본 `.avhdx`와 같은 폴더에 `.vhdx` 하드링크를 만들 경로도 준비합니다. 하드링크를 다른 폴더에 만들면 상대 부모 경로가 깨져 `Test-VHD`가 실패할 수 있으므로, 반드시 `$Parent.DirectoryName`을 사용합니다.
+
+```powershell
+$ParentLink = Join-Path $Parent.DirectoryName "parent-link.vhdx"
+$ParentLink
+```
+
 출력이 비어 있으면 여기서 멈추고, 압축 해제한 VM에 체크포인트 파일이 실제로 있는지 다시 확인해야 합니다.
 
 ### 압축 해제로 날짜가 바뀐 경우 수동 지정
@@ -79,7 +84,9 @@ zip을 풀면서 모든 파일의 수정 시간이 압축 해제 시점으로 �
 ```powershell
 $ParentPath = "C:\Users\사용자이름\Desktop\a\Snapshots\실제사용할파일.avhdx"
 $Parent = Get-Item $ParentPath
+$ParentLink = Join-Path $Parent.DirectoryName "parent-link.vhdx"
 $Parent.FullName
+$ParentLink
 ```
 
 바탕화면 경로를 자동으로 조합하려면 아래처럼 쓸 수도 있습니다.
@@ -87,7 +94,9 @@ $Parent.FullName
 ```powershell
 $ParentPath = Join-Path $Original "Snapshots\실제사용할파일.avhdx"
 $Parent = Get-Item $ParentPath
+$ParentLink = Join-Path $Parent.DirectoryName "parent-link.vhdx"
 $Parent.FullName
+$ParentLink
 ```
 
 이후 단계에서는 `$Parent.FullName`을 직접 `New-VHD -ParentPath`에 넣지 않고, 4번에서 만드는 `$ParentLink`를 부모로 사용합니다.
@@ -102,7 +111,7 @@ New-Item -ItemType Directory -Path $Work -Force
 
 `New-VHD -Differencing`은 부모 디스크 경로가 `.vhd` 또는 `.vhdx` 확장자여야 해서 `.avhdx`를 직접 부모로 넣으면 실패합니다.
 
-따라서 `a\proxmox-work` 안에 원본 `.avhdx`를 가리키는 `.vhdx` 하드링크를 먼저 만듭니다. 하드링크는 같은 파일을 다른 이름으로 가리키는 것이므로, 실제 디스크 용량을 새로 거의 쓰지 않습니다.
+따라서 원본 `.avhdx`와 **같은 폴더**에 해당 `.avhdx`를 가리키는 `.vhdx` 하드링크를 먼저 만듭니다. 하드링크는 같은 파일을 다른 이름으로 가리키는 것이므로, 실제 디스크 용량을 새로 거의 쓰지 않습니다.
 
 ```powershell
 Remove-Item $ParentLink -Force -ErrorAction SilentlyContinue
@@ -246,13 +255,13 @@ New-VHD -Path $RunDisk -ParentPath $ParentLink -Differencing
 바탕화면\a\Snapshots              = 원본 체크포인트 보존
 바탕화면\a\Virtual Hard Disks     = 원본 디스크 보존
 바탕화면\a\Virtual Machines       = 원본 구성 파일 보존
-바탕화면\a\proxmox-work\parent-link.vhdx = 부모 체크포인트를 가리키는 하드링크
+선택한 avhdx와 같은 폴더\parent-link.vhdx = 부모 체크포인트를 가리키는 하드링크
 바탕화면\a\proxmox-work\run.vhdx  = 새 변경분 저장
 ```
 
 문제가 생기면 VM을 끄고 `run.vhdx`만 지운 뒤 다시 만들면 됩니다.
 
-하드링크 생성이 실패하면 `$Original`과 `$Work`가 같은 드라이브에 있는지 확인합니다. 이 문서처럼 `$Work`를 `a` 폴더 안에 만들면 보통 같은 드라이브라서 하드링크가 됩니다.
+하드링크 생성이 실패하면 `$ParentLink`가 `$Original` 아래에 있는지 확인합니다. 이 문서처럼 `$ParentLink`를 선택한 `.avhdx`와 같은 폴더에 만들면 보통 같은 드라이브라서 하드링크가 됩니다.
 
 ## 5. 이전 실패 VM 등록 제거
 
