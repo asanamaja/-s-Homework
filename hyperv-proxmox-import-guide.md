@@ -292,7 +292,7 @@ Hyper-V 관리자에서 직접 할 수도 있습니다.
 바탕화면\a\proxmox-work\run.vhdx
 ```
 
-32GB RAM이 있는 PC에서는 처음 부팅/복구 확인용으로 **8GB**를 추천합니다.
+처음 부팅/복구 확인용으로는 **8GB**부터 시작해도 됩니다.
 
 ```powershell
 New-VM `
@@ -304,14 +304,32 @@ New-VM `
 
 메모리 기준:
 
-- 처음 부팅/복구 확인: `8GB` 추천
-- Proxmox 안에서 VM/LXC를 여러 개 돌릴 예정: 이후 `12GB` ~ `16GB`로 조정
-- 호스트 Windows 안정성을 위해 처음부터 `24GB` 이상 할당은 비추천
+- 32GB RAM PC
+  - 처음 부팅/복구 확인: `8GB` 추천
+  - Proxmox 안에서 VM/LXC를 여러 개 돌릴 예정: 이후 `12GB` ~ `16GB`로 조정
+  - 호스트 Windows 안정성을 위해 처음부터 `24GB` 이상 할당은 비추천
+- 128GB RAM PC
+  - 처음 부팅/복구 확인: `16GB` ~ `32GB`
+  - Proxmox 안 VM/LXC 여러 개 실행: `64GB` 추천
+  - 많이 켜야 하면 `80GB` ~ `96GB`까지 가능
+  - Windows/Hyper-V용으로 최소 `24GB` ~ `32GB` 정도는 남겨두는 것을 추천
 
 나중에 메모리를 16GB로 바꾸려면 VM을 끈 뒤 실행합니다.
 
 ```powershell
 Set-VMMemory -VMName "Proxmox-VE" -StartupBytes 16GB
+```
+
+128GB RAM PC에서 Proxmox에 64GB를 주려면:
+
+```powershell
+Set-VMMemory -VMName "Proxmox-VE" -StartupBytes 64GB
+```
+
+더 많이 필요하면 96GB까지 올릴 수 있습니다.
+
+```powershell
+Set-VMMemory -VMName "Proxmox-VE" -StartupBytes 96GB
 ```
 
 ## 7. 첫 부팅 전 검사점과 보안 부팅 끄기
