@@ -36,10 +36,12 @@ a
 $Original = Join-Path ([Environment]::GetFolderPath("Desktop")) "a"
 $Work = Join-Path $Original "proxmox-work"
 $RunDisk = Join-Path $Work "run.vhdx"
+$ParentLink = Join-Path $Work "parent-link.vhdx"
 
 $Original
 $Work
 $RunDisk
+$ParentLink
 ```
 
 출력된 `$Original` 경로가 `Snapshots`, `Virtual Hard Disks`, `Virtual Machines`가 들어있는 `a` 폴더인지 확인합니다.
@@ -88,7 +90,7 @@ $Parent = Get-Item $ParentPath
 $Parent.FullName
 ```
 
-이후 단계의 `New-VHD -ParentPath $Parent.FullName` 명령은 그대로 사용합니다.
+이후 단계에서는 `$Parent.FullName`을 직접 `New-VHD -ParentPath`에 넣지 않고, 4번에서 만드는 `$ParentLink`를 부모로 사용합니다.
 
 ## 4. 새 변경 디스크 만들기
 
@@ -98,10 +100,19 @@ $Parent.FullName
 New-Item -ItemType Directory -Path $Work -Force
 ```
 
-최신 `.avhdx`를 부모로 하는 새 differencing disk를 만듭니다.
+`New-VHD -Differencing`은 부모 디스크 경로가 `.vhd` 또는 `.vhdx` 확장자여야 해서 `.avhdx`를 직접 부모로 넣으면 실패합니다.
+
+따라서 `a\proxmox-work` 안에 원본 `.avhdx`를 가리키는 `.vhdx` 하드링크를 먼저 만듭니다. 하드링크는 같은 파일을 다른 이름으로 가리키는 것이므로, 실제 디스크 용량을 새로 거의 쓰지 않습니다.
 
 ```powershell
-New-VHD -Path $RunDisk -ParentPath $Parent.FullName -Differencing
+Remove-Item $ParentLink -Force -ErrorAction SilentlyContinue
+New-Item -ItemType HardLink -Path $ParentLink -Target $Parent.FullName
+```
+
+그 다음 이 `.vhdx` 하드링크를 부모로 하는 새 differencing disk를 만듭니다.
+
+```powershell
+New-VHD -Path $RunDisk -ParentPath $ParentLink -Differencing
 ```
 
 이후 구조는 아래처럼 전부 `a` 폴더 안에서 처리됩니다.
@@ -110,10 +121,13 @@ New-VHD -Path $RunDisk -ParentPath $Parent.FullName -Differencing
 바탕화면\a\Snapshots              = 원본 체크포인트 보존
 바탕화면\a\Virtual Hard Disks     = 원본 디스크 보존
 바탕화면\a\Virtual Machines       = 원본 구성 파일 보존
+바탕화면\a\proxmox-work\parent-link.vhdx = 부모 체크포인트를 가리키는 하드링크
 바탕화면\a\proxmox-work\run.vhdx  = 새 변경분 저장
 ```
 
 문제가 생기면 VM을 끄고 `run.vhdx`만 지운 뒤 다시 만들면 됩니다.
+
+하드링크 생성이 실패하면 `$Original`과 `$Work`가 같은 드라이브에 있는지 확인합니다. 이 문서처럼 `$Work`를 `a` 폴더 안에 만들면 보통 같은 드라이브라서 하드링크가 됩니다.
 
 ## 5. 이전 실패 VM 등록 제거
 
@@ -244,7 +258,7 @@ Connect-VMNetworkAdapter -VMName "Proxmox-VE" -SwitchName "External Switch"
 Stop-VM -Name "Proxmox-VE" -TurnOff -Force
 Remove-VM -Name "Proxmox-VE" -Force
 Remove-Item $RunDisk -Force
-New-VHD -Path $RunDisk -ParentPath $Parent.FullName -Differencing
+New-VHD -Path $RunDisk -ParentPath $ParentLink -Differencing
 ```
 
 그 다음 6번부터 다시 진행합니다.
@@ -261,7 +275,7 @@ New-VHD -Path $RunDisk -ParentPath $Parent.FullName -Differencing
 작업이 끝난 뒤 현재 PowerShell 창에서 사용한 변수를 지우고 싶으면 아래를 실행합니다.
 
 ```powershell
-Remove-Variable Original, Work, RunDisk, Parent, ParentPath -ErrorAction SilentlyContinue
+Remove-Variable Original, Work, RunDisk, Parent, ParentPath, ParentLink -ErrorAction SilentlyContinue
 ```
 
 이 명령은 PowerShell 변수만 지우며, VM 파일이나 디스크 파일은 삭제하지 않습니다.
