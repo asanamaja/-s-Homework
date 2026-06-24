@@ -384,7 +384,109 @@ Connect-VMNetworkAdapter -VMName "Proxmox-VE" -SwitchName "External Switch"
 
 `External Switch` 부분은 실제 만든 스위치 이름으로 바꿉니다.
 
-## 11. 이번 시도 변경분만 초기화하기
+## 11. Proxmox 네트워크 설정
+
+Proxmox에서는 보통 실제 랜카드 역할의 `eth0`에는 IP를 붙이지 않고, 브리지인 `vmbr0`에 IP를 붙입니다.
+
+기본 원칙:
+
+```text
+eth0  = Hyper-V 가상 랜카드, 보통 manual
+vmbr0 = Proxmox 관리 IP와 내부 VM/LXC 브리지
+```
+
+따라서 Proxmox 웹 UI 접속 주소는 `eth0`가 아니라 `vmbr0` IP를 사용합니다.
+
+```text
+https://vmbr0-IP:8006
+```
+
+### Hyper-V 스위치별 추천
+
+| 목적 | Hyper-V 스위치 | eth0 | vmbr0 |
+|---|---|---|---|
+| Windows 호스트에서만 Proxmox 웹 접속 | Default Switch | manual | dhcp |
+| Proxmox 인터넷 임시 연결 | Default Switch | manual | dhcp |
+| 같은 공유기망의 다른 PC/폰에서도 접속 | External Switch | manual | static 추천 |
+| Proxmox 안 VM/LXC를 실제 LAN에 붙임 | External Switch | manual | static 추천 |
+
+### `vmbr0`를 DHCP로 바꾸기
+
+Default Switch를 쓸 때는 `vmbr0`를 DHCP로 두는 것이 편합니다.
+
+Proxmox 콘솔에서 파일을 엽니다.
+
+```bash
+nano /etc/network/interfaces
+```
+
+아래처럼 설정합니다.
+
+```text
+auto lo
+iface lo inet loopback
+
+auto eth0
+iface eth0 inet manual
+
+auto vmbr0
+iface vmbr0 inet dhcp
+    bridge-ports eth0
+    bridge-stp off
+    bridge-fd 0
+```
+
+저장 후 적용합니다.
+
+```bash
+ifreload -a
+```
+
+`ifreload`가 없거나 실패하면 재부팅합니다.
+
+```bash
+reboot
+```
+
+부팅 후 IP를 확인합니다.
+
+```bash
+ip addr show vmbr0
+```
+
+`inet` 뒤에 나온 IP로 접속합니다.
+
+```text
+https://해당-IP:8006
+```
+
+### External Switch에서 static 예시
+
+공유기 대역이 `192.168.0.x`, 게이트웨이가 `192.168.0.1`이면 예시는 아래와 같습니다.
+
+```text
+auto lo
+iface lo inet loopback
+
+auto eth0
+iface eth0 inet manual
+
+auto vmbr0
+iface vmbr0 inet static
+    address 192.168.0.50/24
+    gateway 192.168.0.1
+    bridge-ports eth0
+    bridge-stp off
+    bridge-fd 0
+```
+
+접속:
+
+```text
+https://192.168.0.50:8006
+```
+
+## 12. 이번 시도 변경분만 초기화하기
 
 이번 부팅 시도를 버리고 처음 상태로 되돌리고 싶으면, VM을 끄고 `run.vhdx`만 다시 만듭니다.
 
@@ -404,7 +506,7 @@ New-VHD -Path $RunDisk -ParentPath $ParentLink -Differencing
 - 새 변경분은 `바탕화면\a\proxmox-work\run.vhdx`에 저장합니다.
 - C드라이브 여유 공간이 부족하면 부팅 전에 먼저 공간을 확보해야 합니다.
 
-## 12. 사용한 PowerShell 변수 정리
+## 13. 사용한 PowerShell 변수 정리
 
 작업이 끝난 뒤 현재 PowerShell 창에서 사용한 변수를 지우고 싶으면 아래를 실행합니다.
 
