@@ -545,6 +545,13 @@ qm set 120 --cpu x86-64-v2
 qm start 120
 ```
 
+VM ID가 `199`에서 같은 오류가 나도 동일하게 처리합니다.
+
+```bash
+qm set 199 --cpu x86-64-v2
+qm start 199
+```
+
 그래도 실패하면 더 보수적인 CPU 타입으로 바꿉니다.
 
 ```bash
@@ -564,6 +571,24 @@ VM 120 -> Hardware -> Processors -> Type
 
 ```bash
 grep -R "^cpu: .*AES" /etc/pve/qemu-server/*.conf
+```
+
+`x86-64-v2-AES`가 들어간 VM들을 한 번에 `x86-64-v2`로 바꾸려면:
+
+```bash
+for conf in /etc/pve/qemu-server/*.conf; do
+  id=$(basename "$conf" .conf)
+  if grep -q "^cpu: .*AES" "$conf"; then
+    echo "Updating VM $id"
+    qm set "$id" --cpu x86-64-v2
+  fi
+done
+```
+
+이후 필요한 VM을 다시 시작합니다.
+
+```bash
+qm start 199
 ```
 
 그래도 안 되면 실제 PC BIOS/UEFI에서 아래 설정이 켜져 있는지 확인합니다.
