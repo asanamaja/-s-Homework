@@ -609,6 +609,87 @@ done
 qm start 199
 ```
 
+### Hyper-V 가상 프로세서 오류 또는 Proxmox 재부팅이 반복되는 경우
+
+Windows Hyper-V 이벤트 로그에 아래와 비슷한 `18550` 위험 이벤트가 나오고 Proxmox가 재부팅되면, Hyper-V nested virtualization 쪽의 가상 CPU 안정성 문제일 수 있습니다.
+
+```text
+가상 프로세서 레지스터에 액세스하는 동안 복구할 수 없는 오류가 발생...
+```
+
+이 경우 Proxmox-VE VM을 끈 뒤 Windows 관리자 PowerShell에서 vCPU 수를 줄이고 CPU 호환성 옵션을 끕니다.
+
+```powershell
+Stop-VM -Name "Proxmox-VE" -TurnOff -Force
+
+Set-VMProcessor -VMName "Proxmox-VE" -Count 16
+Set-VMProcessor -VMName "Proxmox-VE" -ExposeVirtualizationExtensions $true
+Set-VMProcessor -VMName "Proxmox-VE" -CompatibilityForMigrationEnabled $false
+
+Set-VMMemory -VMName "Proxmox-VE" -DynamicMemoryEnabled $false
+Set-VMMemory -VMName "Proxmox-VE" -StartupBytes 64GB
+
+Start-VM -Name "Proxmox-VE"
+```
+
+설정이 적용되었는지 Windows에서 확인합니다.
+
+```powershell
+Get-VMProcessor -VMName "Proxmox-VE" | Format-List Count,ExposeVirtualizationExtensions,CompatibilityForMigrationEnabled
+Get-VMMemory -VMName "Proxmox-VE" | Format-List DynamicMemoryEnabled,Startup
+```
+
+예상:
+
+```text
+Count                            : 16
+ExposeVirtualizationExtensions   : True
+CompatibilityForMigrationEnabled : False
+DynamicMemoryEnabled             : False
+Startup                          : 68719476736
+```
+
+Proxmox 안에서는 vCPU 개수를 `egrep -c '(vmx|svm)' /proc/cpuinfo`로 판단하지 않습니다. 이 명령은 CPU 개수가 아니라 `vmx`/`svm` 문자열이 몇 번 나오는지 세는 것이므로, vCPU가 16개여도 32처럼 보일 수 있습니다.
+
+vCPU 개수는 아래 명령으로 확인합니다.
+
+```bash
+nproc
+lscpu | grep -E '^CPU\(s\):|Thread|Core|Socket'
+```
+
+KVM 사용 가능 여부는 아래로 확인합니다.
+
+```bash
+ls -l /dev/kvm
+```
+
+### 내부 VM은 하나씩 천천히 시작
+
+Proxmox 안의 VM을 여러 개 한 번에 켜면 Hyper-V nested virtualization 환경에서 상태 조회가 꼬이거나 Proxmox VM이 재부팅될 수 있습니다. 하나씩 시작하고 잠깐 기다린 뒤 다음 VM을 켭니다.
+
+예:
+
+```bash
+qm start 100
+sleep 20
+qm status 100
+
+qm start 110
+sleep 20
+qm status 110
+
+qm start 120
+sleep 20
+qm status 120
+
+qm start 130
+sleep 20
+qm status 130
+```
+
+이 방식으로 정상 동작하면, 문제는 특정 VM 자체보다 여러 VM을 동시에 시작하면서 생기는 nested virtualization/상태 갱신 불안정일 가능성이 큽니다.
+
 그래도 안 되면 실제 PC BIOS/UEFI에서 아래 설정이 켜져 있는지 확인합니다.
 
 - Intel: Intel VT-x
